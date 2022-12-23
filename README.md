@@ -21,9 +21,43 @@
 
 - **멀티코어 프로세서의 동작 원리와 알고리즘 이해하기**
 
-  > multicore processor 동작이 어떻게 다른지, 또한 threading, pararllel programming 등을 공부하낟.
+  > multicore processor 동작이 어떻게 다른지, 또한 threading, pararllel programming 등을 공부한다.
 
 </br>
+
+## 🚩 정리한 문서 목록
+
+### 📔 processor 기초
+
+ - [ISA와 architectural state](https://github.com/erectbranch/Multicore_Basic/tree/master/ch01)
+
+   > computer architectural state, ISA
+
+   > CISC와 RISC: instruction의 구조, 설계 차이(stack memory 조작, addressing mode, array 접근 방식), compile로 보는 차이
+
+ - [Amdahl's Law와 processor 성능 향상](https://github.com/erectbranch/Multicore_Basic/tree/master/ch04)
+
+   > Amdahl's Law, 병렬 처리에서의 Amdahl's Law, latency, throughput, processor 성능 향상을 위한 접근 방법
+
+ - [dependence](https://github.com/erectbranch/Multicore_Basic/tree/master/ch05)
+
+   > data dependence(RAW/WAR/WAW), control dependence, memory dependence, loop-carried dependence
+
+ - [processor의 기본 동작](https://github.com/erectbranch/Multicore_Basic/tree/master/ch06)
+
+   > (가상의) instruction 처리 단계: Instruction Fetch(IF), Instruction Decoding(ID), Operand Fetch(OF), Instruction Execution(EXE), Operand Store(OS, WB)
+
+   > exception(trap, falut, abort)과 interrupt
+
+### 🗜 pipeline
+
+ - [Instruction Pipeline](https://github.com/erectbranch/Multicore_Basic/tree/master/ch07)
+
+   > pipeline stall, 이상적인 pipeline 조건, 다섯 단계(IF/ID/OF/EXE/OS)으로 구성한 instruction pipeline, fragmentation 줄이기
+
+   > structural/control/data hazard, pipeline을 통한 software parallelize
+
+<br/>
 
 ## :mag: 목차
 
