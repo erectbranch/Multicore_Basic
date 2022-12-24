@@ -23,7 +23,7 @@ d = e * f;       // 4번
 
 ---
 
-## 6.1 Instruction Level Parallelism
+## 8.1 Instruction Level Parallelism
 
 out-of-order execution은 **ILP**(Instruction Level Parallelism. 명령어 수준 병렬성)을 찾아서, 원래 순서가 아닌 data의 flow에 따라 instruction을 처리한다.
 
@@ -71,5 +71,88 @@ ILP를 계산하려면 위처럼 dependence graph를 그린 뒤, root node에서
 > IPC(Instruction Per Cycle)와 혼동해서는 안 된다. 에초에 ILP는 program의 고유한 성격에 해당하고, IPC는 processor의 구현 방식에 좌우된다.
 
 OOOE는 **scheduling**(스케줄링) 관점에서 볼 수 있다. OOOE는 instruction 사이의 dependence를 파악해서 dynamic하게 scheduling한다. 그래서 OOOE를 **dynamic scheduling**(동적 스케줄링) 기법이라고 부른다. 또한 ILP는 hardware가 아닌 software(compiler)가 대신 찾아줘도 된다.
+
+> 한편 computer architecture 중에서 **dataflow**(데이터플로우)라는 전통적인 방식과 매우 상이한 처리 방식이 있다. dataflow는 OOOE의 이상적인 모습에 해당한다.
+
+---
+
+## 8.2 superscalar pipeline
+
+**superscalar**(슈퍼스칼라)를 간단히 말하면 pipeline이 여러 개 있어서 동시에 instruction을 처리할 수 있는 구조를 뜻한다.
+
+![슈퍼스칼라 구조](images/superscalar.png)
+
+이전까지 본 pipeline processor는 pipeline이 하나밖에 없어서, 1 cycle에 최대 instruction 1개만 완료할 수 있었다.(IPC = 1)
+
+하지만 위 그림처럼 pipeline이 두 개가 되면서 이상적인 상황이라면 cycle마다 최대 두 개의 instruction이 **issue**(투입)과 **graduation**(retirement. 완료)가 가능하다.(IPC = 2)
+
+> 보통 superscalar processor는 동시에 issue/graduation 가능한 instruction 개수에 따라 N-issue, N-wide, N-way superscalar로 표현한다.
+
+이상적으로는 N개의 instruction을 fetch하여 pipeline에 넣을 수 있지만, 실제로는 instruction cache의 제약, dependence, branch 때문에 대체로 N개보다 작은 instruction을 fetch할 수 있다.
+
+그런데 superscalar processor라는 개념은 오직 instruction pipeline이 여러 개 복제되어 있는 것만을 의미한다. in-order인지, out-of-order인지 여부는 무관하다. 하지만 out-of-order processor로 좋은 성능을 내려면 superscalar로 만들어야 한다.(따라서 오인하기 쉽다.)
+
+> 다시 말해 out-of-order processor도 superscalar가 아닌 1-wide processor일 수도 있다. 반면 in-order processor가 superscalar일 수 있다.
+
+superscalar processor 구현에는 어려움이 따른다. N-wide processor라면 최대 N개의 instruction을 fetch해야 하지만, instruction cache가 이를 손쉽게 해결하지는 못한다. instruction이 제대로 정렬되지 않았거나, 다른 cache line에 걸쳐 있는 등의 상황이 발생하기 때문이다. 또한 앞서 말한 것처럼 branch가 끼어 있다면 문제가 더 어려워진다. bypass logic 역시 복잡해진다. superscalar는 이런 문제도 N배로 커지는 것이다.
+
+---
+
+## 8.3 OOOE 구현: Tomasulo Algorithm
+
+out-of-order superscalar processor는 주어진 instruction에서 ILP를 찾아 실행 가능한 instruction부터 처리한다. 그런데 이를 처리하는 algorithm은 어떻게 가능할까? 핵심은 instruction scheduling에 있다는 점을 상기해 보자.
+
+```c
+x = data[10];    // 1번
+y = x + 10;      // 2번
+a = b / c;       // 3번
+d = e * f;       // 4번
+```
+
+앞서 본 예제를 다시 살펴보자. 편의상 모든 variable(x, y, a, b, c, d, e, f)를 모두 register로 가정하자. data[10]은 어떤 data가 담긴 address를 뜻한다. 
+
+![토마슐로 알고리즘](images/tomasulo_algorithm.png)
+
+1. 일단 instruction을 모두 fetch, decoding하여 어떤 queue에 넣어야 한다.(IF, ID 단계)
+
+2. queue에서 대기하며 operand가 준비되는 것을 검사하며 기다린다.(scheduling 단계)
+
+3. 준비가 다 되었으면 실제 계산을 수행한다.(EXE 단계)
+
+4. 완료가 됐을 때 만약 지금의 연산 결과를 필요로 하는 instruction이 있다면 알려준다. 끝으로 instruction은 queue를 떠나고 프로그래머는 과정이 완료가 된 것으로 보인다.(OS 단계)
+
+위 4단계를 예제에 맞게 설명하면 다음과 같다.
+
+1. 1번 instruction은 queue를 하나 할당받아서 들어간다. 1번 register x에 value을 쓸 것이므로, 뒤에 따라오는 instruction들 중 x를 쓰는 instruction들에게 반드시 자신을 기다리라고 당부한다.
+
+   - 예들 들어 register file에서 x의 value를 바로 읽지 못하게 한다.
+
+   - 1번은 memory load이므로 cache에 이 data를 가져와달라고 요청한다. 허나 cache miss가 발생하면 긴 시간이 소요될 것이다.(지금 예제에서 발생했다고 가정하자.)
+
+2. processor는 다음 instruction인 2번을 읽어 queue에 넣는다. 그런데 register x의 value가 필요하고, 이는 1번이 완료되어야 쓸 수 있도록 되어 있다. 따라서 1번을 계속 기다린다.
+
+3. 3번 instruction이 queue에 들어온다. register b와 c를 읽어야 하는데 이번에는 그냥 읽을 수 있다. 따라서 processor는 ALU 하나를 할당해서 계산을 수행한다. queue에서는 이 instruction을 이제 빼내고 완료되었다는 사실을 전한다.
+
+4. 4번 instruction도 3번처럼 처리된다.
+
+5. cache miss에 의해 긴 시간이 소요되며 마침내 1번 instruction의 data가 도달한다. 1번은 이제 register file에 값을 갱신하고, 완료가 되면 이 사실을 queue에서 기다리는 instruction에게 알린다. 그러면 2번은 비로소 register x의 값을 읽울 수 있게 된다.
+
+위 과정을 보면 data dependence에 따라 instruction이 scheduling 되었음을 알 수 있다. 이 algorithm이 OOOE의 기원인 **Tomasulo algorithm**(토마슐로 알고리즘)이다.
+
+> 1967년 이 알고리즘을 구현한 Robert Tomasulo의 이름을 딴 것이다. 지금에 와서는 어느 정도 바뀌었지만 핵심은 그대로 남아 있다.
+
+---
+
+## 8.4 Instruction Window(명령어 윈도우)
+
+현실에서 실제 program의 크기는 매우 크기 때문에, code 전체를 분석해 이상적인 ILP를 찾는 것은 hardware의 제약으로 불가능에 가깝다. 따라서 out-of-order processor에서 찾는 ILP는 상대적으로 매우 제한된 범위 내에서 찾는다. **Instruction Window**(명령어 윈도우)가 바로 이 범위를 가리키는 개념이다.
+
+예를 들어 128개의 instruction window를 갖는다는 말은 128개의 instruction 속에서 ILP를 찾을 수 있다는 뜻이다. 다르게 말하면 128개의 instruction을 잠시 들고 있으면서 OOOE를 수행한다는 말이기도 하다.
+
+![명령어 윈도우](images/instruction_window.png)
+
+instruction window는 보통 연속적으로 움직인다. 내부에서 가장 오래된 instruction이 완료되면 한 칸씩 이동하게 된다. 이 instruction window 안에 있는 instruction을 **in-flight**(인-플라이트) instruction이라고 표현하기도 한다.
+
+> instruction window는 hardware의 제약을 받아 보통 100여개가 넘는 정도에서 ILP를 탐색하지만, compiler가 software 관점에서 수천 개의 instruction 사이에서 최적의 ILP을 찾는다.
 
 ---
