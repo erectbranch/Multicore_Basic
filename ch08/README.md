@@ -145,6 +145,8 @@ d = e * f;       // 4번
 
 ## 8.4 Instruction Window(명령어 윈도우)
 
+> [비순차 프로세서 파이프라인의 핵심 기술](http://cloudrain21.com/out-of-order-processor-pipeline-1)
+
 현실에서 실제 program의 크기는 매우 크기 때문에, code 전체를 분석해 이상적인 ILP를 찾는 것은 hardware의 제약으로 불가능에 가깝다. 따라서 out-of-order processor에서 찾는 ILP는 상대적으로 매우 제한된 범위 내에서 찾는다. **Instruction Window**(명령어 윈도우)가 바로 이 범위를 가리키는 개념이다.
 
 예를 들어 128개의 instruction window를 갖는다는 말은 128개의 instruction 속에서 ILP를 찾을 수 있다는 뜻이다. 다르게 말하면 128개의 instruction을 잠시 들고 있으면서 OOOE를 수행한다는 말이기도 하다.
@@ -156,3 +158,148 @@ instruction window는 보통 연속적으로 움직인다. 내부에서 가장 �
 > instruction window는 hardware의 제약을 받아 보통 100여개가 넘는 정도에서 ILP를 탐색하지만, compiler가 software 관점에서 수천 개의 instruction 사이에서 최적의 ILP을 찾는다.
 
 ---
+
+## 8.5 register renaming을 이용한 false dependence 제거
+
+기계어상에서 data dependence는 register 이름이 겹치는지 파악하면 간단히 알 수 있다. 그 중에서도 RAW는 true dependence, WAW, WAR는 false dependence였다. in-order pipeline processor에서는 일반적으로 WAW, WAR dependence로 pipeline hazard가 일어나지 않았다. 아래 예시를 보자.
+
+```c
+r2 = r1 + 5;    // 1번
+r1 = r0 + 1;    // 2번: WAR
+r1 = r0 + 2;    // 3번: WAW
+```
+
+![순차 프로세서에서의 false dependence](images/in-order_false_dependence.png)
+
+- 2번 instruction이 r1에 value를 store하는 시점은 WB, 즉 t7 시점이다.
+
+- 그런데 1번 instruction은 이보다 **RR**(Register Read)을 빠른 시간(t3)에 마치므로 아무런 문제가 일어나지 않는다.
+
+- 3번 instruction도 동일한 이유로 dependence로 인한 hazard가 발생하지 않는다.
+
+하지만 OOOE가 되면 WAW/WAR 같은 false dependence도 문제를 일으킨다. 따라서 ILP를 높이기 위해 한 차례 **Register Renaming** 과정을 거쳐서 false dependence를 제거해야 한다.(이 작업은 IF 단계에서 진행된다.) 아래 예시를 보자.
+
+```c
+r2 = r1 + 5;    // => F0 = r1 + 5;
+r0 = r2 + 4;    // => F1 = F0 + 4;
+r1 = r0 + 1;    // => F2 = F1 + 1;
+r1 = r0 + 2;    // => F3 = F1 + 2;
+r3 = r1 + 3;    // => F4 = F3 + 3; 
+```
+
+instruction마다 주석으로 RR을 적용한 버전을 작성하였다. 하지만 이런 방법을 실현하기 위해서는 ISA가 정의하는 register 이외에 추가 register가 있어야 RR을 효과적으로 사용할 수 있다.(부족하면 제약이 생기기 때문이다.) 따라서 register file을 다음과 같이 나눈다.
+
+- **ARF**(Architecture Register File): 구조 레지스터 파일. ISA가 정의하는 register file이다. 함부로 바꾸면 하위호환성이 어긋나기 때문에 쉽게 바꿀 수 없다.
+
+- **PRF**(Physical Register File): 물리 레지스터 파일. 프로그래머가 자유롭게 사용할 수 있다.
+
+- **RAT**(Register Alias Table): 위 register file의 변경 내역을 기억하는 장소.
+
+위 예제에서 r0 ~ r3은 ARF, F0 ~ F4는 PRF에 해당된다. 아래와 같은 변경 규칙으로 RR이 진행되었다.
+
+1. instruction의 target register name을 현재 가능한 PRF 중 하나로 바꾼다. 이 변경 내역을 RAT에 기록한다.
+
+   - 예를 들어 예제에서는 r2가 F0로 대체되었다고 기록한다.
+
+2. 다음 instruction이 register를 읽을 때는 RAT를 살펴보고, 현재 어떤 PRF에 mapping이 되었는지 확인하고 읽는다.
+
+   - 예제에서 2번 instruction은 r2가 F0로 대체되었다는 기록을 읽는다. 또한 r0를 F1으로 대체한다.
+
+3. intruction이 완료되고 자신이 이 논리 register를 쓰는 마지막 instruction이라면 RAT value를 default로, 즉 ARF로 바꾼다.
+
+   - RAT에서 r2 항목을 F0에서 다시 r2로 바꿔둔다.
+
+> 다만 과정 중에 PRF에 여유가 없다면 stall이 발생한다.
+
+> RR은 superscalar 구조에서 더욱 구현이 복잡하다는 문제를 안고 있다.
+
+---
+
+## 8.6 Reservation Station
+
+OOOE의 핵심은 dynamic instruction scheduling에 있다. program에 적힌 순서대로가 아닌, operand가 완료되는 순서대로 처리하기 위해서는 scheduling device가 필요하게 된다. 이 device가 바로 **RS**(Reservation Station. 대기소)이다.
+
+OOOE에서는 instruction decoding 이후 RS device에서 queue 슬롯 하나를 할당받는다. instruction은 RS에 자리 잡고 **Wake-up**(깨우기) 작업과 **Select**(선택) 작업 두 단계를 거치게 된다.
+
+Wake-up은 어떤 instruction의 모든 operand가 완료되었는지 감시하는 device이다. 모두 완료되면 instruction execution 준비가 되었다는 뜻이며, 이제 필요한 계산 장치를 할당하면 된다. 여기서도 scheduling이 필요한데, 이 작업이 Select에 해당한다.
+
+![인텔 네할렘 구조의 RS](images/nehalem_rs.png)
+
+- 이 구조에서 RS는 36개의 instruction을 담을 수 있으며, 15개의 실행 장치를 가진다.
+
+- 15개 실행 장치를 한 단위, **Post**로 묶는다. 위 그림에서는 6개의 Port가 있으며, 따라서 36대 6 scheduling만 구현하면 된다.
+
+위 그림은 intel nehalem microarchitecture의 RS을 나타낸 것이다. 총 36개의 RS가 있으며, 말머리에 붙는 Unified란 instruction type과 상관없이 RS를 통합했다는 의미다.
+
+> processor에 따라 integer/floating point/load/store에 따라 RS를 독립적으로 관리하기도 한다.
+
+> 하지만 wake-up 작업이 매우 복잡하기 때문에 RS를 늘리기는 굉장히 어렵다. 이 부분이 현대 out-of-order microprocessor pipeline 구현의 bottleneck 지점이다.
+
+이어서 아래 4-wide superscalar 구조 예시를 보자.
+
+- 4-wide superscalar 구조라면 최대 instruction을 4개까지 완료할 수 있다.
+
+- cycle마다 RS에 있는 instruction을 자신의 operand가 완료되었는지 검사해야 했다. 
+
+- 이때 nehalem 구조처럼 instruction 36개가 RS에 있다면, uop가 최대 3개의 argument를 취할 수 있으므로, 총 108개의 operand를 대기하는 상황이 발생할 수 있다.
+
+- 따라서 완료된 instruction 4개의 연산 결과가 108개의 operand와 일치하는지 동시에 검사해야 한다.
+
+이 작업은 보통 hardware device 중 **CAM**(Content-Addressable Memory)라는 것으로 구현된다. CAM은 매우 빠르게 어떤 data를 찾는 데 쓰이는 device인데, 이 device 역시 매우 복잡하기 때문에 늘리기 힘들다.
+
+---
+
+## 8.7 Re-Order Buffer
+
+out-of-order processor라고 해서 모든 것을 뒤죽박죽 실행하지는 않는다. 예를 들어 instruction fetch, decoding를 out-of-order로 시행하지는 않는다. instruction fetch는 여전히 program에서 정한 순서대로 진행된다.
+
+> out-of-order란 <U>오직 execution 단계에서 operand가 먼저 완료되는 순서대로 실행</U>하는 것이다.
+
+따라서 instruction fetch, decoding은 in-order하지만, execution은 out-of-order로 진행된다. 따라서 결과적으로 instruction는 out-of-order하게 완료될 것이다. 하지만 이런 상황은 프로그래머가 굉장히 혼동을 겪게 만들 수 있다. 따라서 **ROB**(Re-Order Buffer)를 둬서 instruction이 in-order하게 완료될 수 있도록 만든다.
+
+앞서 instruction decoding이 되면 scheduling을 위해 RS에 머무는 것을 보았는데, 사실 이때 RS만이 아니라 ROB에도 같이 할당된다. RS에서는 instruction이 자신의 operand가 모두 충족되면 execution할 수 있는 시점에 떠날 수 있었다. 하지만 ROB는 execution이 완료된 시점에서도 바로 밖으로 노출되지 않는다.
+
+> 이런 점 때문에 사실상 ROB의 크기가 결국 out-of-order processor의 instruction window를 결정짓는다.
+
+> nehalem 구조에서 RS가 36개였던 반면, ROB은 128개를 가졌다.
+
+![ROB](images/ROB.png)
+
+- 3번, 4번은 intruction 1,2와 무관하여 이미 execution을 마쳤다.
+
+- 하지만 3번, 4번은 ROB에서 가장 오래된 instruction이 아니기 때문에, 지금 바로 commit을 하면 프로그래머는 out-of-order한 결과를 보고 혼동을 겪을 것이다. 따라서 앞서 있는 instruction의 commit을 대기한다.
+
+ROB는 일종의 circular queue다. instruction decoding 후 ROB에 instruction이 자리를 잡고, execution이 완료되면 그 사실을 기록한다. 그리고 그 instruction이 가장 오래된 instruction에 해당될 때 ROB를 떠날 수 있다. 이 과정을 **commit**(커밋), **retirement**(퇴장), **graduation**(마침)으로 표현한다. 
+
+> 또한 동시에 ARF에 value를 최종적으로 갱신하는 과정이나 memory에 value를 store하는 과정도 commit이 되어야만 가능하다. 만약 commit 전이라면 보류된다.
+
+ROB로 in-order하게 instruction을 commit해야 하는 또 다른 중요한 이유는 fault와 exception 처리에 있다. 만약 out-of-order하게 execution한 program에서, 앞선 instruction보다 먼저 execution한 instruction이 page fault를 일으키켰다고 하자. 그렇게 OS로 제어가 넘어가게 되면 프로그래머는 혼란을 겪을 수밖에 없다.
+
+> 따라서 out-of-order processor에서는 fault와 exception도 하나의 결과로 간주하고, 발생하는 시점에서 즉시 조치를 취하지는 않는다. ROB에서 기다리고 있다가, instruction의 commit 시점에서 외부(프로그래머)에게 알리게 된다.
+
+---
+
+## 8.8 out-of-order processor pipeline 정리
+
+정리하자면 out-of-order processor의 주요 pipeline 단계는 다음과 같다. 크게 분류하면 (1) IF,ID (2) 자원 할당(ROB와 RS 할당) (3) out-of-order execution (4) commit으로 나눌 수 있으며, 세부적인 단계는 다음과 같다.
+
+| Fetch | Decode | Rename | Issue | Schedule | Exec | Writeback | Commit |
+
+1. instruction fetch: 보통 superscalar 구조이므로 in-order processor보다 더 복잡하다.
+
+2. instruction decode: 만약 x86 processor라면 RISC 형식의 uop로 decode한다.
+
+3. register renaming: false dependence를 제거하기 위해 RR 작업을 수행한다.
+
+4. issue(혹은 allocation): 준비된 uop를 각종 장치, 예를 들어 RS, ROB에 할당한다.
+
+5. scheduling: operand 완료를 매 cycle마다 검사하고, 준비되면 실행 장치를 scheduling한다.
+
+6. execution: 연산한다.
+
+7. Writeback: 연산 결과를 ROB나 PRF 같은 곳에 쓴다.(아직 commit 전이므로 외부에 노출되지는 않는다.)
+
+8. commit: 차지한 자원을 반환하고 결과를 최종적으로 반영한다. ARF나 memory를 갱신한다.
+
+---
+
