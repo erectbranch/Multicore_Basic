@@ -57,6 +57,10 @@
 
    > structural/control/data hazard, pipeline을 통한 software parallelize
 
+ - [out-of-order processor pipeline](https://github.com/erectbranch/Multicore_Basic/tree/master/ch08)
+
+   > Instruction Level Parallelism, superscalar 구조, Tomasulo algorithm, Instruction Window, Register Renaming, Reservation Station, Re-Order Buffer
+
 <br/>
 
 ## :mag: 목차
