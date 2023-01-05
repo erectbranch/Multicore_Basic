@@ -121,7 +121,7 @@ d = e * f;       // 4번
 
 4. 완료가 됐을 때 만약 지금의 연산 결과를 필요로 하는 instruction이 있다면 알려준다. 끝으로 instruction은 queue를 떠나고 프로그래머는 과정이 완료가 된 것으로 보인다.(OS 단계)
 
-위 4단계를 예제에 맞게 설명하면 다음과 같다.
+위 4단계를 예제에 맞춰서 설명하면 다음과 같다.
 
 1. 1번 instruction은 queue를 하나 할당받아서 들어간다. 1번 register x에 value을 쓸 것이므로, 뒤에 따라오는 instruction들 중 x를 쓰는 instruction들에게 반드시 자신을 기다리라고 당부한다.
 
@@ -205,7 +205,7 @@ instruction마다 주석으로 RR을 적용한 버전을 작성하였다. 하지
 
    - 예제에서 2번 instruction은 r2가 F0로 대체되었다는 기록을 읽는다. 또한 r0를 F1으로 대체한다.
 
-3. intruction이 완료되고 자신이 이 논리 register를 쓰는 마지막 instruction이라면 RAT value를 default로, 즉 ARF로 바꾼다.
+3. instruction이 완료되고 자신이 이 논리 register를 쓰는 마지막 instruction이라면 RAT value를 default로, 즉 ARF로 바꾼다.
 
    - RAT에서 r2 항목을 F0에서 다시 r2로 바꿔둔다.
 
@@ -261,11 +261,11 @@ out-of-order processor라고 해서 모든 것을 뒤죽박죽 실행하지는 �
 
 > 이런 점 때문에 사실상 ROB의 크기가 결국 out-of-order processor의 instruction window를 결정짓는다.
 
-> nehalem 구조에서 RS가 36개였던 반면, ROB은 128개를 가졌다.
+> nehalem 구조에서 RS는 36개를 가진 반면, ROB은 128개를 가지고 있었다.
 
 ![ROB](images/ROB.png)
 
-- 3번, 4번은 intruction 1,2와 무관하여 이미 execution을 마쳤다.
+- 3번, 4번은 instruction 1,2와 무관하여 이미 execution을 마쳤다.
 
 - 하지만 3번, 4번은 ROB에서 가장 오래된 instruction이 아니기 때문에, 지금 바로 commit을 하면 프로그래머는 out-of-order한 결과를 보고 혼동을 겪을 것이다. 따라서 앞서 있는 instruction의 commit을 대기한다.
 
