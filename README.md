@@ -59,7 +59,7 @@
 
  - [out-of-order processor pipeline](https://github.com/erectbranch/Multicore_Basic/tree/master/ch08)
 
-   > Instruction Level Parallelism, superscalar 구조, Tomasulo algorithm, Instruction Window, Register Renaming, Reservation Station, Re-Order Buffer
+   > Instruction Level Parallelism, critical path, superscalar 구조, Tomasulo algorithm, Instruction Window, Register Renaming, Reservation Station, Re-Order Buffer
 
 <br/>
 
