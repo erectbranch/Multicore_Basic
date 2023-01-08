@@ -4,6 +4,8 @@
 
 > hardware level에서 두 개 이상의 thread가 동시에 실행되므로 hardware thread라는 표현을 쓰기도 한다.
 
+> 하나의 physical processor를 두 개의 logical processor로 동작하게 구현한 것을 2-way SMT라고 부른다.
+
 ---
 
 ## 9.1 Simultaneous Multi-Threading
@@ -47,6 +49,10 @@ typedef struct _CONTEXT {
 > 다시 말해 hardware multi-threading은 TLP를 최대한 활용하는 방법이다.
 
 > 또한 resource efficiency를 극대화하는 기술로 볼 수 있다. OOOE가 in-order execution보다 (energy efficiency를 고려하지 않는다는 가정 하에) 더 나은 performance를 보인 이유는 낭비되는 cycle을 줄였기 때문이다. 예를 들어 in-order execution에서는 한 instruction이 cache miss를 일으키면 상당한 시간이 소요되지만, OOOE는 무관한 instruction을 먼저 처리하는 것으로 cycle 낭비를 막을 수 있었다.
+
+---
+
+## 9.2 multi-threading의 종류
 
 다음은 3-wide superscalar processor의 도식이다.
 
@@ -98,12 +104,47 @@ typedef struct _CONTEXT {
 
     multi-threading의 극단적인 형태로, 매 cycle마다 여러 thread에서 '동시에' instruction을 가져와서 pipeline에 넣는다.
 
-    > 앞서 fine-grained, coarse-grained multi-threading이 수직 방향의 낭비는 효율적으로 줄이나, 수평 방향의 낭비는 줄이지 못했다. 하지만 simultaneous multi-threading은 이 문제를 해결한다.(완전히 해결할 수 있는 건 아니다.)
+    > 앞서 fine-grained, coarse-grained multi-threading(둘을 묶어서 Temporal Multi-Threading으로 지칭하기도 한다.)이 수직 방향의 낭비는 효율적으로 줄이나, 수평 방향의 낭비는 줄이지 못했다. 하지만 simultaneous multi-threading은 이 문제를 해결한다.(완전히 해결할 수 있는 건 아니다.)
 
     - 그림에서 수평 방향의 낭비를 다른 thread의 instruction을 가져와 해결하는 것을 볼 수 있다.
-    
-simultaneous multi-threading은 processor resource가 생각보다 덜 활용된다는 점에서 착안한 개념이다. 살펴보면 대부분 cache miss, TLB(Translation Lookaside Buffer) miss, memory load latency, ILP 등에 의해 낭비되었다. 따라서 낭비를 줄이고 processor resource를 더 활용하는 방법을 제안한 것이다.
+
+---
+
+## 9.3 simultaneous multi-threading의 구현
+
+simultaneous multi-threading은 processor resource가 생각보다 덜 활용된다는 점에서 제안된 개념이다. 살펴보면 대부분 cache miss, TLB(Translation Lookaside Buffer) miss, memory load latency, ILP 등에 의해 낭비되었다. 따라서 낭비를 줄이고 processor resource를 더 활용하는 방법을 제안한 것이다.
 
 > overload의 원인이 cache miss가 압도적이라면 cache를 늘리거나 policies를 개선하기만 하면 되겠지만, 각 program마다 overload가 생기는 원인이 제각각 다르기 때문에 공통적인 해결책이 필요했다.
+
+> 또한 Compaq나 intel에서 새롭게 SMT를 구현하는 데 hardware에서 필요한 면적은 기존의 약 6%, 5%로 크지 않아서 효율적이었다.
+
+simultaneous multi-threading은 특성상 thread context를 유지할 수 있도록 resource(예를 들어 register file)가 가진 값들이 반드시 복제되어야 한다. 그러나 현대 processor가 가지는 transistor의 양을 생각하면 크게 많은 양은 아니다.
+
+특히 OOOE에서 가장 중요한 instruction scheduling 장치와 execution 장치는 SMT와 거의 무관하다. 따라서 전반적인 pipeline의 수정을 거칠 필요 없이, 노는 resource를 더 써서 logical processor를 늘릴 수 있는 셈이다.
+
+SMT에 의한 영향은 다음과 같이 크게 resource의 복제, 분할(partition), 공유, 무관으로 나눌 수 있다.
+
+| 정책 | 설명 | nehalem architecture에서의 예시 |
+| --- | --- | --- |
+| 복제 | thread마다 복제됨 | register file, register renaming 관련 장치, Large Page ITLB(큰 페이지 명령어 TLB) |
+| 파티션 | thread마다 정적으로 할당 | load/store buffer, ROB, Small Page ITLB(작은 페이지 명령어 TLB) |
+| 경쟁적으로 공유 | thread의 행동에 따라 결정 | RS(Reservation Station), cache, data TLB, 2차 TLB |
+| 무관 | 영향이 없음 | out-of-order execution 장치 |
+
+---
+
+### 9.3.1 SMT processor의 명령어 인출 정책, cache 문제
+
+SMT에서는 매 cycle마다 여러 thread에서 instruction을 fetch해야 하는데, 이때 어떤 규칙과 정책으로 뽑아낼지 결정하는 건 어려운 문제다. 
+
+![simultaneous](images/simultaneous.png)
+
+예를 들어 앞서 본 3-way superscalar 구조에 2-way SMT를 구현했다고 하자. 또한 어떤 cycle에서 두 thread A,B가 모두 instruction을 동시에 2개씩 issue할 수 있다고 가정한다. 그렇다면 총 4개의 instruction을 issue할 수 있겠지만, 가능한 hardware resource는 총 3개로 부족하게 된다. 이때 어떻게 scheduling을 결정할까라는 어려움이 생긴다.
+
+> 대표적인 예시로는 ICOUNT가 있다. 이는 각 thread가 지금까지 처리한 instruction 수를 파악하고, 제일 적게 instruction을 처리한 thread에 우선 순위를 준다.
+
+또한 SMT로 만들어진 두 logical processor에서 많은 cache가 필요하다면 문제가 생길 수 있다. 운이 좋으면 두 logical processor가 cache를 share하고 이득을 얻을 수 있지만, 최악의 경우에는 심한 overload 때문에 오히려 SMT로 더 낮은 performance를 얻을 수도 있다.
+
+> OS의 thread 할당도 최적화해야 한다. 예를 들어 logical thread에 thread들을 몰아서 할당하기보다는, 다른 physical thread에 할당하는 방식으로 나눠서 처리하게 만드는 편이 더 합리적이다.(share하는 resource가 적게 만들어야 한다.)
 
 ---

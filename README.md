@@ -61,6 +61,12 @@
 
    > Instruction Level Parallelism, critical path, superscalar 구조, Tomasulo algorithm, Instruction Window, Register Renaming, Reservation Station, Re-Order Buffer
 
+ - [Simultaneous Multi-Threading(SMT)](https://github.com/erectbranch/Multicore_Basic/tree/master/ch09)
+
+   > thread context, context switching, TLP(Thread-Level Parallelism)
+
+   > Temporal Multi-Threading(fine-grained/coarse-grained threading), Simultaneous Multi-Threading(SMT)
+
 <br/>
 
 ## :mag: 목차
