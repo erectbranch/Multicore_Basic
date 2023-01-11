@@ -86,6 +86,14 @@ cache에서 data를 찾을 때 다음과 같이 경우가 나뉘게 된다. cach
 
 cache에서 특정 data를 찾는 작업은 일반적으로 **hash table** data structure로 구현된다. cache entry의 수가 저장할 수 있는 전체 data 수보다 훨씬 작기 때문에 제일 합리적인 구조이다. 
 
+![hash table](images/hash_table.png)
+
+-  hash table이란 hash function의 결과를 array index로 사용하는 방법을 의미한다.(array의 각 element를 bucket이라고 한다) 
+
+- hash function은 계산하기 쉬워야 하며 key를 골고루 bucket에 뿌려줘야 한다.
+
+> 하지만 hash function의 값이 겹치는 경우가 생길 수 있다. 이를 **collision**(충돌)이라고 한다. **hash chain**을 사용해 이런 문제를 해결할 수 있다.
+
 cache가 가득찼다면 기존의 cache entry 중 일부를 교체하는 algorithm이 필요하다.(예를 들어 가장 오랫동안 쓰이지 않은 cache entry를 삭제하고 그 자리를 차지하는 algorithm을 쓸 수 있다.) 교체 policy에 따라 단순히 counter만 필요할 수도 있고, 다양하고 복잡한 data structure가 필요할 수도 있다. 
 
 > 따라서 cache 설계에서 cache entry 구조를 정하고, 최적의 탐색 방법과 교체 policy를 정의해야 한다.
@@ -213,5 +221,212 @@ CacheLine& LookupCache(uint32_t addr)
   }
 }
 ```
+
+---
+
+### 12.3.2 cache placement policy
+
+주어진 address를 cache를 저장할 때 문제가 더 남아있다. 앞서 cache index 값을 구해서 바로 그 자리에 data를 저장했다. 그런데 같은 index를 가지는 memory address는 오직 한 곳에 배치되야 하지만, cache와 같은 구조라면 여러 memory address가 collision이 일어날 수 있다.
+
+예를 들어 0xA00과 0xB00의 data가 모두 같은 cache index를 가지고, 두 address가 번갈아가며 access된다고 하자. 이런 상황에서는 두 address에 access할 때마다 cache miss가 일어난다. 이러한 confilct(충돌)를 최소화하고자 하나의 index 안에 여러 개의 cache 공간을 할당한다.
+
+cache placement policy(캐시 배치 정책)으로는 세 가지 종류가 있다.
+
+![cache placement policies](images/cache_placement_policy.png)
+
+- **directed-mapped** cache(직접 사상 캐시)
+
+- **set-associative** cache(집합 연관 캐시)
+
+- **fully-associated** cache(완전 연관 캐시)
+
+set-associative cache는 index 하나에 cache line이 N개씩 들어갈 수 있는데, 이를 N-way set-associative cache라고 한다.(예시 그림은 2-way) N을 **associativity**(연관도)라고 하며, cache line N개가 하나의 set를 이루게 된다.
+
+> 앞서 예시로 든 0xA00, 0xB00만 해도 2-way만 되면 cache collision miss를 없앨 수 있다. 이처럼 set-associative는 cahce collision을 줄일 수 있다는 장점을 가진다.
+
+> N-way set-associative cache는 각 element마다 N개의 고정 길이를 가진 hash table처럼 볼 수 있다.
+
+아래는 4-way set-associative cache를 구현한 code 예시다.
+
+> 예시에서 for iteration으로 표기했지만 실제로는 작업이 동시에 수행된다. 하지만 그만큼 전력과 트랜지스터 비용이 더 소모된다. associativity를 늘리면 cache collision은 줄어드나 그만큼의 cost가 들기 때문에 적절한 균형을 찾아야 한다.
+
+```c
+// 32bit address space, 64byte cache line, 32KB cache (4-way set-associative)
+// Cache Line 구조는 동일
+struct CacheSet
+{
+  CacheLine line[4];
+};
+
+// 32KB 4-way cache data structure
+// direct-mapped는 512개의 set가 있었다. 4-way이므로 128 = 512/4
+// index bit도 9bit에서 7bit로 줄어들게 된다.(2^7 = 128)
+CacheSet set_[128];
+
+CacheLine& LookupCache(unit32_t addr)
+{
+  // addr에 해당되는 set index를 구한다.(가운데 7bit만 추려낸다.)
+  unit32_t set_index = (addr >> 6) & 0x07F
+  unit32_t tag       = (addr >> (6 + 7));
+
+  // set의 모든 cache line과 비교한다.
+  CacheSet& set = set_[set_index];
+  for (int i = 0; i < 4; ++i) {
+    if (set.line[i].valid && set.line[i].tag == tag) {
+      return set.line[i];
+    }
+  }
+
+  return invalid_cache_line;
+}
+```
+
+---
+
+## 12.3.3 cache replacement policy
+
+같은 cache size에서는 hit rate(적중률)도 cache associativity에 영향을 미치지만, cache replacement policy(캐시 교체 정책)이 상당히 중요한 역할을 한다. 
+
+direct-mapped cache는 index가 갈 수 있는 곳이 하나뿐이라서, 이미 어떤 data가 그 자리를 차지하고 있다면 그 data를 삭제하고 대체한다. 따라서 cache replacement policy를 고려할 필요가 없다.
+
+하지만 set-associative cache는 빈 공간이 없다면 최대 N개 중 하나를 골라 없애야 하므로 cache replacement policy가 중요해진다.(단순히 random으로 아무 cache line이나 쫓아낸다면 성능이 좋게 나올 수 없다.)
+
+ideal policy는 '앞으로' 가장 오랫동안 사용하지 않을 cache line을 내보내는 것이다. 하지만 이를 완벽하게 알 수는 없고, 과거의 정보를 이용해서 추론할 수만 있다.
+
+- **LRU**(Least Recently Used): 가장 최근까지 사용되지 않은 cache line을 제거한다. 제일 일반적으로 사용한다.
+
+- **LFU**(Least Frequently Used): cache line의 access 빈도를 따진다.
+
+- **FIFO**(First In First Out)
+
+사실 software적인 구현 방법은 매우 직관적이다. LRU는 cache line마다 **time stamp**, 즉 마지막으로 접근한 시각을 기록한다. LFU는 access마다 counter 값을 증가시키고, FIFO는 queue를 쓰면 된다.
+
+> time stamp는 CPU cycle 값을 이용해서 기록한다.
+
+하지만 hardware에서 이러한 구현 방식은 실현되기 어렵다. CPU cycle을 사용하면 금방 조 단위로 증가하게 되므로 32bit보다 큰 integer가 필요하게 된다. 따라서 이런 counter는 무지막지한 비용을 잡아먹게 될 것이다.
+
+따라서 다음 algorithm을 사용해서 LRU를 구현한다. N-way set-associate cache라면 cache line마다 $\log{2N}$ bit counter만 있으면 LRU를 구현할 수 있다.
+
+1. 0 ~ N-1까지의 범위가 가능한 counter를 할당한다.(예를 들어 16-way라는 4bit(2^4) counter를 둔다.)
+
+2. cache line이 access되면 cache line의 counter가 가지고 있던 값 $t$ 를 잠시 기록하고, 이 counter의 값을 최대값 N-1로 바꾼다. 그리고 같은 set에 있는 다른 cache line 중 counter 값이 $t$ 보다 크면 1씩 감소시킨다.
+
+3. (set 내 빈 cache line이 없어서) replacement가 필요할 때, counter가 0인 cache line을 찾아서 삭제한다. 
+
+그러나 최근 cache, 특히 size가 크고 여러 core들이 공유하는 L3 cache는 16-way, 24-way를 넘기기도 한다. N-way가 클수록 hardware cache에서 LRU를 구현하려면 counter가 더 많은 bit가 필요하고, counter를 서로 비교하고 갱신하는 비용이 커서 부담이 된다. 따라서 LRU algorithm을 그대로 사용하지 않고 **pseudo** LRU algorithm을 쓴다.
+
+pseudo LRU는 cache set에 있는 cache line을 마치 tree structure로 관리하는데, 가장 최근에 access한(Most Recently Used(**MRU**)) cache line으로 가는 경로를 기록하게 된다.
+
+![pseudo LRU](images/pseudo_LRU.png)
+
+- cache에 access할 때 bit 값 0은 왼쪽으로, 1은 오른쪽으로 간다는 의미다.
+
+- (a): way 1에 있는 cache에 access됐을 때, LRU bit가 갱신되는 모습
+
+  - cache line이 replacement될 때는 이와 반대로 해석해서 이동하게 된다.
+
+- (b): (a)를 반대로 해석해서 cache replacement를 수행한다.
+
+위는 pseudo LRU의 작동 예시 그림이다. 비록 완벽하지는 않지만 적어도 MRU인 way 1은 결코 선택되지 않는다. 
+
+L1 cache에서는 LRU나 pseudo LRU가 보통 좋은 성능을 낸다. 그러나 L2, L3은 다른 policy를 쓰기도 한다. 기본적으로 L2 cache의 access 형태가 L1 cache miss의 결과임을 생각해 보자. L1 cache는 보통 LRU를 채택하므로 MRU cache line이 최대한 보존되지만, 다른 level의 cache로 접근하게 되면 temporal locality가 낮아지게 된다. 
+
+---
+
+### 12.3.4 cache write policy
+
+cache write에서는 두 가지 policy를 생각해 볼 수 있다.
+
+- **write-through**: memory 또는 아래 level cache에 바로 반영하기
+
+- **write-back**: 변경된 data를 일단 cache가 들고 있다가, 나중에 cache에서 쫓겨날 때 비로소 memory를 갱신하기
+
+write-through policy는 매번 memory나 아래 level cache에 반영하기 때문에 latency가 길다. 따라서 당연히 write-back policy가 훨씬 좋아 보이지만 이 방식은 구현이 조금 복잡하다.
+
+write-back은 cache line마다 **dirty bit**를 둔다. 처음 이 값은 0에서 시작해서, 이후 cache line이 쓰이게 되면 dirty bit를 켠다. 이는 갱신된 data가 cache line에만 있고, 아직 memory에 최종 반영되지 않았음을 의미한다. 이후 cache line이 replace될 때 비로소 memory에 갱신된 값으로 쓰게 된다.
+
+일반적으로 대부분의 cache은 write-back policy를 사용하지만, 예외적으로 L1 instruction cache는 흔히 write-through policy를 쓴다. program instruction code에서는 보통 갱신이 일어나지 않기 때문이다.
+
+> 이런 cache write policy는 file IO programming에서도 쉽게 찾아볼 수 있다. 다음 사진은 windows OS에서 disk drive의 cache write policy를 설정하는 창이다.
+
+![windows disk drive policy](images/windows_drive_write_policy.png)
+
+일반적인 hard disk는 write back policy로 설정되어 있다. 따라서 hard disk에 data를 바로 쓰지 않고 일단 cache에서 data를 갱신하게 된다. 그리고 cache가 다 차면 주기적으로 이 data를 memory로 내보낸다.
+
+> 하지만 이런 방식은 USB처럼 빈번히 탈착되는 저장 장치에는 악영향을 미칠 수 있다. USB를 제거하기 전에 아직 반영하지 못한 data를 처리해야 한다. 따라서 write-back policy 기능을 킨 상태라면 반드시 '하드웨어 안전하게 제거'를 거쳐야 한다.
+
+---
+
+## 12.4 high performance cache를 위한 algorithm
+
+cache performance는 다음과 같이 정량적으로 표기할 수 있다. 일반적인 cache performance는 average memory access time(평균 메모리 접근 시간)을 이용해 나타낸다.
+
+- average memory access time = hit latency + miss rate * miss penalty
+
+  - miss rate = cache miss/(cache miss + cache hit)
+
+average memory access time을 줄이기 위한 세 항은 서로 연관되어 있다. 예를 들어 cache size를 늘리면 당연히 cache miss(miss rate)는 줄어든다. 하지만 cache에서 data를 가져오는 데 드는 시간인 hit latency는 악화된다. 따라서 cache miss를 무작정 크게할 수도 없다.
+
+---
+
+### 12.4.1 cache inclusion policy
+
+거의 대부분의 cache는 L1, L2, L3처럼 hierarchy를 이루고 있다. 이렇게 memory latency를 줄일 수 있지만 cache hit 때 data를 가져오는 cost는 커지게 된다. 예를 들어, 64KB cache에서 data를 읽어올 때 3cycle이 걸린다고 하자. 8KB cache는 이것을 1cycle에 처리할 수도 있다. 이처럼 size가 큰 cache는 cache miss는 적겠지만, 전체적인 average memory access time은 오히려 손해를 볼 수 있다.
+
+다음 예시는 몇몇 CPU의 cache 용량을 나타낸 표이다.
+
+| Intel Core i9-13900K | AMD Ryzen 9 7950X | Intel Core i9-12900KF | AMD Ryzen 7 7700X | AMD Ryzen 5 7600X | 
+| :---: | :---: | :---: | :---: | :---: | 
+| L1 Cache | 2.1MB | 1MB | 1.4MB | 512KB | 384KB |
+| L2 Cache | 32MB | 16MB | 14MB | 8MB | 6MB |
+| L3 Cache | 36MB | 64MB | 30MB | 32MB | 32MB |
+
+또한 hierarchy를 구성하게 되면 data 보관으로도 생각해야 할 문제가 생긴다. 대표적으로 세 가지 cache inclusion policy가 있다. 
+
+- **inclusive policy**: 어떤 cache line이 L1에 있을 때, 반드시 L2에도 있을 것을 보장한다.
+
+  - 단순히 존재 여부만이 아니라 cache line이 가지고 있는 값도 모든 cache level이 같은 값을 갖는다.
+
+  - 따라서 cache miss가 일어나면 다른 cache level에서 탐색한다. 즉 **miss latency**가 낮다.
+
+  - 하지만 low level cache가 다른 level의 cache memory capacity를 제한해 버리는 단점이 있다.(higher level cache capacity가 낭비된다.)
+
+- **exclusive policy**: 어떤 cache line이 L1에 있다면, L2에는 반드시 없다.
+
+  - 따라서 제일 많은 memory capacity를 활용할 수 있게 된다.
+
+- **NINE policy**: non-inclusive non-exclusive. 어떤 cache data가 L1에 있다면, L2에는 있을 수도, 없을 수도 있다.
+
+---
+
+### 12.4.2 cache miss의 분류와 줄이는 방법
+
+cache miss가 어떤 이유로 발생하는지, 그리고 어떻게 줄일 수 있는지 알아보자.
+
+- **cold miss**: compulsory miss라고도 한다. data를 최초로 읽을 때 발생한다.
+
+  - cache line 크기를 늘리거나 prefetching으로 줄일 수 있다.
+
+  > 그러나 전체 capacity가 같은 구조에서 cache line만 지나치게 커지면, 다른 conflict miss나 capacity miss가 발생할 가능성이 커진다.
+
+- **conflict miss**: cache의 associativity가 부족해서 발생한다.
+
+  - cache associativity를 높이면 되지만, 너무 크면 hit latency가 악화될 수 있다.
+
+  > N-way라면 모든 way가 주어진 data와 tag가 서로 일치하는지 확인해야 한다.
+
+- **capacity miss**: cache의 capacity가 부족해서 발생한다.
+
+  - cache size를 늘리는 방법 말고는 없다. 이때 cache가 커지면서 hit latency가 악화될 수 있다.
+
+- **coherence miss**: 다른 processor에 의해 cache line이 무효화되어 발생한다.
+
+  - multicore에서는 cache가 여러 군데 있어서, cache에 저장된 data 사이에 **coherence**(일관성)을 유지하기 어렵다.
+
+참고로 conflict miss를 줄이는 아주 간단한 기법이 있다. 바로 **victim cache**라는 아주 작은 규모의 fully associative cache를 두는 것이다. 이 작은 buffer는 cache replacement로 쫓겨난 몇몇 cache line을 보관하는 역할을 맡는다.
+
+즉, 이런 특성상 data가 L1에서 밖으로 throw out될 때, victim cache에 해당 data가 채워지게 된다. 그리고 L1 cache에서 cache miss가 발생했을 때, victim cache를 살펴보고 만약 access 결과가 hit라면 L1 cache line과 victim cache line의 data가 서로 swap된다.
+
+> 처음에는 L1 cache의 cache miss를 보완하기 위해 제안되었지만, 현재는 L3 cache에서도 victim cache를 도입했다.(L4 cache로 지칭하기도 한다.)
 
 ---
