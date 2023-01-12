@@ -94,13 +94,13 @@ cache에서 특정 data를 찾는 작업은 일반적으로 **hash table** data 
 
 > 하지만 hash function의 값이 겹치는 경우가 생길 수 있다. 이를 **collision**(충돌)이라고 한다. **hash chain**을 사용해 이런 문제를 해결할 수 있다.
 
-cache가 가득찼다면 기존의 cache entry 중 일부를 교체하는 algorithm이 필요하다.(예를 들어 가장 오랫동안 쓰이지 않은 cache entry를 삭제하고 그 자리를 차지하는 algorithm을 쓸 수 있다.) 교체 policy에 따라 단순히 counter만 필요할 수도 있고, 다양하고 복잡한 data structure가 필요할 수도 있다. 
+cache가 가득찼다면 기존의 cache entry 중 일부를 교체하는 algorithm이 필요하다.(예를 들어 가장 오랫동안 쓰이지 않은 cache entry를 삭제하고 그 자리를 차지하는 algorithm을 쓸 수 있다.) replacement policy에 따라 단순히 counter만 필요할 수도 있고, 다양하고 복잡한 data structure가 필요할 수도 있다. 
 
-> 따라서 cache 설계에서 cache entry 구조를 정하고, 최적의 탐색 방법과 교체 policy를 정의해야 한다.
+> 따라서 cache 설계에서 cache entry 구조를 정하고, 최적의 탐색 방법과 replacement policy를 정의해야 한다.
 
 CPU cache, 혹은 hardware cache도 기본적인 개념은 software cache와 동일하다. 그러나 CPU cache는 대부분 **SRAM**(Static Random Access Memory)로 만들어지기 때문에 가격이 비싸며 공간은 한정되어 있다. 또한 CPU cache에서 hash table처럼 pointer로 연결된 data structure를 순회하거나 갱신하기는 어렵다.(탐색에서 복잡한 hash function을 쓰기도 어렵다.)
 
-> cache 교체에 필요한 부가 정보도 그 양을 줄여 bit 단위로 관리한다. 교체 algorithm도 최대한 간단히 만들어야 한다. 그렇지 않으면 cache latency가 지나치게 길어지게 된다.
+> cache replacement에 필요한 부가 정보도 그 양을 줄여 bit 단위로 관리한다. replacement algorithm도 최대한 간단히 만들어야 한다. 그렇지 않으면 cache latency가 지나치게 길어지게 된다.
 
 ---
 
@@ -108,7 +108,7 @@ CPU cache, 혹은 hardware cache도 기본적인 개념은 software cache와 동
 
 CPU cache는 locality를 활용했다. 그런데 cache는 프로그래머 입장에서는 **transparent**(투명)하게, 즉 cache가 있는지 없는지 모르게 처리되므로, 프로그래머는 특별한 optimization이 아닌 이상 cache를 고려할 필요가 없다.
 
-cache는 여러 계층으로 구성되었다. processor가 memory system에 data를 요청하면 L1 cache에서 먼저 찾는다. 여기서 못 찾으면 그 아래 memory hierarchy인 L2 cache에서 찾는다. 이후 LLC까지 도달해도 없다면 비로소 main memory로 가서 data를 가져온다. 이 data는 cache에 보관되고 최종적으로 processor에 반환된다.
+cache는 여러 계층으로 구성되어 있다. processor가 memory system에 data를 요청하면 L1 cache에서 먼저 찾는다. 여기서 못 찾으면 그 아래 memory hierarchy인 L2 cache에서 찾는다. 이후 LLC까지 도달해도 없다면 비로소 main memory로 가서 data를 가져온다. 이 data는 cache에 보관되고 최종적으로 processor에 반환된다.
 
 일반적으로 L1 cache는 효율성을 이유로 instruction과 data를 분리해서 저장한다. 하지만 L2 cache 이상은 보통 data와 code를 분리하지 않고 한꺼번에 저장한다.
 
@@ -138,7 +138,7 @@ cache 설계는 다음 네 가지 문제를 풀어야 한다.
 
 ---
 
-## 12.3.1 cache의 검색 방법
+## 12.3.1 cache lookup policy
 
 data address 값이 주어졌을 때 이에 해당되는 cache line을 어떻게 찾을 수 있을까? 예를 들어 32bit processor에서 64byte cache line을 사용한다고 하자. 임의의 address 값이 넘어오면 가능한 6천만 개( $2^{32} / 2^{6} = 2^{26}$ )의 가능한 cache line 중 하나가 선택되게 된다. 
 
@@ -156,7 +156,7 @@ cache memory는 다음과 같이 구성된다.
 
 - cache memory는 S개의 집합으로 이루어져 있고, 각 집합은 E개의 cache line을 갖는다.
 
-- set당 cache line 수(E)가 1이면 **direct-mapped cache**, 1보다 크면 **E-way Set associative cache**라고 한다.
+- set당 cache line 수(E)가 1이면 **direct-mapped cache**, 1보다 크면 **E-way set associative cache**라고 한다.
 
 다음은 cache line을 구성하는 요소다.
 
@@ -234,7 +234,7 @@ cache placement policy(캐시 배치 정책)으로는 세 가지 종류가 있�
 
 ![cache placement policies](images/cache_placement_policy.png)
 
-- **directed-mapped** cache(직접 사상 캐시)
+- **direct-mapped** cache(직접 사상 캐시)
 
 - **set-associative** cache(집합 연관 캐시)
 

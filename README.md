@@ -49,6 +49,14 @@
 
    > exception(trap, falut, abort)과 interrupt
 
+ - [cache](https://github.com/erectbranch/Multicore_Basic/tree/master/ch12)
+
+   > temporal/spatial locality, cache hit, cache miss(cold/conflict/capacity/coherence), miss penalty, hit latency, software cache, cache line, cache block
+
+   > cache lookup policy, cache placement policy(direct-mapped/set-associative/fully-associative cache), cache replacement policy(LRU/LFU/FIFO/pseudo LRU), cache write policy(write-through/write-back)
+
+   > cache inclusion policy(L1/L2/L3 hierarchy), victim cache, private/shared cache, cache coherence(MSI/MESI/MOESI protocol)
+
 ### 🗜 pipeline
 
  - [Instruction Pipeline](https://github.com/erectbranch/Multicore_Basic/tree/master/ch07)
