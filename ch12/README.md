@@ -430,3 +430,153 @@ cache miss가 어떤 이유로 발생하는지, 그리고 어떻게 줄일 수 �
 > 처음에는 L1 cache의 cache miss를 보완하기 위해 제안되었지만, 현재는 L3 cache에서도 victim cache를 도입했다.(L4 cache로 지칭하기도 한다.)
 
 ---
+
+### 12.4.3 기타 방법
+
+보통 file 혹은 network I/O program을 만들 때, synchronize(또는 blocking) 방식 또는 asynchronize 방식을 사용한다.
+
+![synchronize vs asynchronize](images/synchronize_asynchronize.png)
+
+예를 들어 긴 시간이 걸리는 파일 쓰기 작업이 있다고 하자.
+
+- synchronize: 파일 쓰기를 요청한 뒤 완료될 때까지 block한다. 다른 task를 수행할 수 없다.
+
+- asynchronize: 파일 쓰기 작업을 요청만 하고, 원래 program은 다른 일을 한다. 그리고 파일 쓰기 작업이 끝났을 때 system은 완료 신호를 program에 보낸다.(이러한 기법을 **latency hiding**이라고 부른다.)
+
+> 현재는 non-blocking cache를 사용한다. 물론 동시에 처리할 수 있는 cahce miss의 개수는 hardware의 제약을 받는다.
+
+cache 역시 pipelining이 가능하다. 앞서 pipeline은 latency를 줄이지는 못하고 throughput을 개선하는 기술이었다. cache을 pipeline으로 만들면 매 cycle마다 cache에 data access를 요청할 수 있다.(특히 L1 cache에 필수적이다.)
+
+이외 **prefetcher**와 같은 hardware 및 software 기술로 cache miss penalty 또는 cold miss를 줄일 수 있다. 특히 matrix access처럼 data 사용 예측이 쉬울 때 특히 효과가 크다.(ch16 참조)
+
+---
+
+## 12.5 multicore에서의 cache
+
+multicore에서 cache는 각 core가 쓰는 **private cache**(전용 캐시)와 여러 core가 공유하는 **shared cache**(공유 캐시)가 있다. 
+
+아래는 2010년 AMD(Phenom)/Intel(Nehalem)의 cahce 구조를 나타낸 그림이다.
+
+![AMD(Phenom)/Intel(Nehalem) 구조의 cache 구성도](images/Phenom_Nehalem_cache.png)
+
+- \$는 cache로 읽는다.
+
+- 각 core에는 instruction/data L1 cache가 private cache로 들어 있다. L2 cache 역시 private cache로 들어 있다.
+
+- L3 cache는 모든 core가 공유할 수 있는 shared cache이다.
+
+multicore는 cache가 여러 군데 있어서 data 사이의 일관성을 유지하기 어렵다. 이를 **coherence** problem이라고 한다.
+
+cache coherence를 지원해야 하는 간단한 예시를 보자. 
+
+1. 위 그림에서 core 0이 address 100에 해당되는 data를 읽는다.
+
+    - address 100의 data가 core 0의 private cache에 있게 된다.
+
+2. core 1도 address 100에 해당되는 data를 읽는다.
+
+    - address 100의 data가 core 1의 private cache에 있게 된다.
+
+3. 이때 만약 core 0이 address 100에 새로운 값을 쓴다면, 대부분의 cache(instruction L1 cache 제외)는 write-back policy이므로 바로 memory에 갱신되지 않고, core 0의 private cache에만 갱신될 것이다.
+
+4. core 1이 다시 address 100 data를 읽어온다면 갱신된 내용이 아닌 예전 값을 읽게 된다.
+
+이런 문제를 프로그래머가 일일이 고민할 수는 없다. 따라서 hardware가 cache coherence를 지원해야 한다. 이런 coherence problem은 multicore만이 아니라, data 사본이 있을 수 있는 모든 memory system에서 발생할 수 있다.
+
+> 예를 들어 web server cache도 동일한 page가 여러 군데 저장될 수 있는데, 어느 한쪽만 갱신되는 식으로 coherence problem이 발생할 수 있다.
+
+---
+
+### 12.5.1 MSI snooping protocol
+
+cache coherence의 대표적인 예로 **MSI snooping protocol**이 있다. cache line마다 세 가지 coherence 상태인 **M**(modified), **S**(Shared), **I**(Invalid)를 가진다. 그리고 cache access마다 bus를 통해 모든 cache에게 신호를 보내는 snooping 작업을 진행한다.
+
+> snoop은 '기웃거리다, 염탐하다'라는 뜻을 가지고 있다.
+
+- Invalid: 어떤 cache line의 상태가 유효하지 않다. 즉, read/write를 위해 반드시 값을 요청해야 한다.
+
+- Shared: cache line이 **dirty**하지 않다. 즉, write된 적이 없고 오직 read만 이루어진 상태다. memory도 cache line의 최신 값과 일치한다.
+
+  - cache line은 자기 자신만 들고 있을 수도 있고, 한 곳 이상에서 공유하고 있을 수 있다.
+
+  - 여기서 어떤 processor가 write 작업을 수행하려면, 반드시 신호를 보내 <U>자신의 cache line을 M 상태로 바꾸면서 다른 cache 사본은 I 상태로</U> 바꿔야 한다.
+
+- Modified: cache line이 어떤 한 processor에 의해 고쳐졌음(dirty)를 의미한다. memory에도 이 값이 반영되지 않았을 수도 있다.
+
+  - cache line이 M 상태라면 오직 하나의 core만 이 cache line을 가지고 있다.
+
+  - 같은 cache line이 공유될 때는, read는 괜찮으나 write는 오직 하나의 processor만 그 사본을 가질 수 있다.
+
+다음 예시를 보자. memory address X에 대한 작업이 P1, P2, P3에서 이루어진다. initial state에서는 모든 processor가 이 data를 가지고 있지 않다. 목표(cache coherence)는 P1, P2, P3가 X 값을 읽을 때, 항상 갱신된 최신 값을 읽을 수 있도록 하는 것이다.
+
+```
+P1: Read  X
+P1: Write X
+P3: Read  X
+P3: Write X
+P1: Read  X
+P3: Read  X
+P2: Read  X
+```
+
+1. P1이 X를 read한다. 아직 cache line에 없으므로 cache miss이다.
+
+    - data를 읽겠다는 snooping 신호를 bus로 보낸다. 이 data를 달리 들고 있는 processor가 없으므로 그냥 memory에서 이 값을 읽어온다.
+
+    - cache line은 S 상태가 된다.
+
+2. P1에 X에 write한다.
+
+    - cache line은 M 상태로 갱신된다. 동시에 이 cache line을 invalid로 바꾸라는 신호를 bus로 보낸다.(달리 갖고 있는 processor가 없으니 바뀌는 건 없다.)
+
+    - dirty 상태가 된다. cache line에서 이 data가 쫓겨난다면 반드시 memory에 반영해야 한다.
+
+3. P3이 X를 read한다.
+
+    - memory는 갱신 이전 값을 가지고 있으므로, P3의 요청에는 절대 응답하지 않는다.
+
+    - P1이 bus를 통해 이 신호를 듣고 (dirty한) 최신 값을 전송해 주겠다는 신호를 보낸다.
+
+    - P1이 cache line 내용을 bus로 보낼 때, memory에 해당 값의 갱신과 P3으로 보내는 과정이 함께 진행된다.
+
+    - 이제 P1은 S 상태, P3도 S 상태이다.
+
+4. P3이 X를 write한다.
+
+    - P3은 S 상태에서 M 상태가 된다.
+
+    - P1은 P3에서 보낸 신호를 받아 cache line을 invalid한다.
+
+5. P1이 X를 read한다.
+
+    - 그런데 P1 cache line이 P3에 의해 invalid가 되었으므로 cache miss가 발생한다.(이것이 coherence miss이다.)
+
+    - 3번 과정과 비슷하게 진행된다. P1은 S 상태, P3도 S 상태가 된다.
+
+6. P3이 X를 read한다.
+
+    - S 상태이고 read 작업이라 bus로 신호를 보낼 필요가 없다. 바로 data를 읽는다.
+
+7. P2가 X를 read한다. 처음이므로 cache miss이다.
+
+    - memory 혹은 P1이나 P3에서 X 값을 전송해 준다.
+
+    > 이처럼 cache가 memory가 아닌 다른 core의 cache에서 data를 전달 받는 것을 **cache-to-cache transfer**라고 한다.
+
+이러한 cache coherence는 **scalability**(확장성)과 직결된다. core가 계속해서 늘어났을 때도 이러한 protocol이 잘 작동해야만 scalability를 가질 수 있게 된다.
+
+---
+
+### 12.5.2 MESI protocol
+
+MSI protocol은 정확한 cache coherence를 보장하지만, 신호를 보내는 작업이나 memory access 횟수가 많다. processor 개수가 많아지면 이런 bus snooping 트래픽도 같이 증가하여 bottleneck 지점이 된다. 특히 낭비되는 지점은 아무도 data를 공유하지 않을 때도 bus 트래픽이 낭비되는 부분이다.
+
+MESI protocol은 MSI에서 **E**(Exclusive) 상태를 추가한다. E는 오직 혼자만이 dirty하지 않은(= memory와 같은) data를 가지고 있는 상태를 뜻한다. 
+
+앞서 MSI 예시에서 이를 적용하면, 1번: P1이 X를 read할 때 S 상태가 아닌 E 상태로 바뀌게 된다. 따라서 2번: P1이 X에 write할 때, bus에 신호를 보내는 낭비를 막을 수 있다.
+
+> 이런 MESI도 완벽하지 않다. 여러 processor가 빈번히 공유 data를 쓴다면 매번 dirty cache line이 memory로 반영되는 부담이 있다. 따라서 dirty cache line도 공유할 수 있게 허용한 MOESI(O: Owner) protocol도 있다.
+
+> MOESI protocol에서는 한 processor를 owner(책임자)로 할당한다. 그리고 이 Owner 상태를 가진 processor가 최종적으로 writeback을 하게 된다.
+
+---
