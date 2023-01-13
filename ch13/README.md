@@ -172,7 +172,7 @@ branch predictor(분기 예측기)를 이용하면 **speculative execution**(투
 
 ---
 
-## 13.4 기본적인 branch prediction 방법
+## 13.4 branch prediction의 방법
 
 앞서 분기된 branch를 **taken branch**, 분기하지 않고 다음 instruction으로 넘어간 branch를 **not-taken branch**라고 했다. 다음 code를 보자.
 
@@ -207,7 +207,7 @@ branch prediction은 크게 **static**(정적)과 **dynamic**(동적) 두 가지
 
 - dynamic branch prediction: 실제 program의 실행 내역으로 branch을 predict한다.(cache가 locality를 이용하는 것과 흡사하다.)
 
-다음 예시를 보고 branch predictor를 만들어 볼 것이다.
+static branch prediction이 가능한 이유를 알기 위해 다음 예시를 보자.
 
 ```c
 1: for (int i = 0; i < 10000; ++i) {
@@ -227,9 +227,15 @@ branch prediction은 크게 **static**(정적)과 **dynamic**(동적) 두 가지
 
 - 2번 역시 i = 100일 때를 제외하면 항상 같은 연산을 수행한다.
 
+이처럼 빈번하게 발생하는 경우를 기반으로 한 특정한 정책으로도 branch prediction을 수행할 수 있다.
+
+---
+
+### 13.4.1 간단한 dynamic branch predictor
+
 다음은 간단한 dynamic branch predictor를 C++ code 형식으로 구현할 것이다. 그런데 branch predictor를 위해 실행 내역을 저장하는 buffer는, cache처럼 size가 제한되므로 특정한 size를 지정해야 한다. 
 
-![branch target buffer](images/branch_target_buffer.png)
+> 수많은 counter의 집합이므로 그만큼 많은 수의 transistor가 필요하다.
 
 또한 branch predictor는 크게 세 가지 interface로 구성할 수 있다.
 
@@ -287,19 +293,23 @@ public:
 | branch prediction | N T T T T T T T | N T T... |
 | 정확도 | X O O O O O O X | X O O... |
 
-8번의 iteration 중 2번 오차가 발생해서 총 error rate는 25%가 된다. 하지만 극단적으로 if ((i % 2) != 0) {sum += i;}와 같은 구문이라면, 매번 iteration 결과가 taken과 not-taken으로 바뀌기 때문에 이전 결과를 쓰면 모든 branch prediction이 빗나가게 된다.
+8번의 iteration 중 2번 오차가 발생해서 총 error rate는 25%가 된다. 하지만 극단적으로 if ((i % 2) != 0) {sum += i;}와 같은 구문이라면, 매번 iteration 결과가 taken과 not-taken으로 바뀌기 때문에 이전 결과를 쓰면 branch prediction이 모두 빗나가게 된다.
+
+---
+
+### 13.4.2 2bit counter based branch predictor
 
 이런 단점을 극복하기 위해서 단순히 taken/not-taken 여부만 기록하지 않고 약간의 저항을 도입할 수 있다. 한 번 정도의 taken/not-taken가 바뀌는 것으로는 branch prediction을 바꾸지 않게 저항을 부여하는 것이다.
 
 ![2bit branch prediction](images/2bit_branch_prediction.png)
 
-따라서 branch table을 단순히 1(taken), 0(not-taken)으로 구성하지 않고, 2bit로 Strongly Not Taken(0), Weakly Not Taken(1), Weakly Taken(2), Strongly Taken(3) 4가지 경우를 도입한다.
+따라서 branch table을 단순히 1(taken), 0(not-taken)으로 구성하지 않고, 2bit로 Strongly Not Taken(00), Weakly Not Taken(01), Weakly Taken(10), Strongly Taken(11) 4가지 경우를 도입한다.
 
 - state가 1, 2: 실제 결과에 따라 prediction 값이 바뀐다. 
 
-  - 여기서 branch prediction 결과가 옳다면 0과 3으로 state가 옮겨간다.
+  - 여기서 branch prediction 결과가 옳다면 00과 11로 state가 옮겨가게 된다.
   
-  - 한 번 결과가 틀려도 branch prediction 값까지는 바꾸지 않게 된다.
+  - 한 번 결과가 틀려도 branch prediction 값까지는 바뀌지 않는다.(01, 10)
 
 마찬가지로 동일한 예시에 2bit counter based branch predictor의 성능을 측정하면 다음과 같다. 총 error rate가 줄어든다.
 
@@ -315,14 +325,14 @@ public:
 class VerySimpleBranchPredictor : public BranchPredictor
 {
 private:
-    bool*  table_;    // 0:StrongNT, 1:WeakNT, 2:WeakT, 3:StrongT
+    char*  table_;    // 00:StrongNT, 01:WeakNT, 10:WeakT, 11:StrongT
     size_t size_;     // branch predictor의 size
     
 public:
     virtual void Initialize(size_t predictor_entry_size) {
-        table_ = new bool[(size_ = predictor_entry_size)];
+        table_ = new char[(size_ = predictor_entry_size)];
         // branch의 모든 결과를 weakly not taken으로 설정한다.
-        memset(table_, 1, sizeof(bool)*size_);
+        memset(table_, 1, sizeof(char)*size_);
     }
     virtual bool DoPrediction(uint64_t branch_pc) {
         // 주어진 branch의 PC address에 해당하는 값을 읽어서 predict한다.
@@ -347,3 +357,173 @@ public:
 
 ---
 
+## 13.5 더 나은 과거 기반 prediction
+
+흔히 '다른 이름으로 저장'을 클릭하면 브라우저는 어느 디렉터리에 해당 파일을 저장할지 묻는다. 여러 그림 파일을 저장한다고 가정하자.
+
+![다른 이름으로 저장](images/window_save.png)
+
+- 첫 저장: 기본 저장 폴더(C:\Downloads)를 보여준다. 하지만 사용자는 그림을 C:\Pictures 폴더에 저장할 것이다.(예측 실패)
+
+- 다음 저장: C:\Pictures에 이어서 저장할 것이다. 브라우저도 최근 사용된 C:\Pictures 폴더를 보여준다.(예측 성공)
+
+이처럼 간단한 prediction으로도 사용자의 불편함을 줄일 수 있다. 그저 'last_saved_folder'와 같은 variable 하나만 두면 구현도 가능하다.
+
+하지만 사용자가 그림은 C:\Pictures, PDF 파일은 C:\Documents에 저장하고 싶다고 하자. 만약 사용자가 "그림 $\rightarrow$ 그림 $\rightarrow$ 그림 $\rightarrow$ PDF $\rightarrow$ 그림 $\rightarrow$ PDF" 순서로 저장을 시도했다고 하자. 예측 결과는 다음과 같다.
+
+| 순서 | 1 | 2 | 3 | 4 | 5 | 6 |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| 파일 종류 | 그림 | 그림 | 그림 | PDF | 그림 | PDF |
+| prediction | C:\Downloads | C:\Pictures | C:\Pictures | C:\Pictures | C:\Documents | C:\Pictures |
+| 적중 여부 | X | O | O | X | X | X |
+
+결과를 보면 2/6으로 단 33%만 적중한 것을 알 수 있다. 이것을 앞서 살핀 2bit counter based branch predictor로도 어느 정도 개선할 수 있지만, 이보다 더 좋은 방법이 있다. 바로 폴더 이름과 함께 파일 종류도 기억하는 것이다.
+
+대신 이 둘을 모두 기억하기 위해 (파일 종류, 폴더 이름) 쌍을 저장하는 hash table 정도가 필요하다. 그렇다면 이 브라우저는 파일 종류를 고려해서 폴더 이름을 예측할 것이다.
+
+| 순서 | 1 | 2 | 3 | 4 | 5 | 6 |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| 파일 종류 | 그림 | 그림 | 그림 | PDF | 그림 | PDF |
+| prediction | C:\Downloads | C:\Pictures | C:\Pictures | C:\Downloads | C:\Pictures | C:\Documents |
+| 적중 여부 | X | O | O | X | O | O |
+
+예측률은 4/6으로 67%, 즉 두 배 증가했다. 이처럼 간단히 차원을 더 늘리는 것으로 비용은 더 들어가지만 예측이 더 정밀해질 수 있다.
+
+---
+
+### 13.5.1 history를 이용한 branch prediction
+
+한 branch의 결과를 predict하는 데 다른 branch의 결과를 함께 고려할 것이다. 다음 예시를 보자.
+
+```c
+1: Node* p = my_data_.FindNode();
+2: if (p == NULL) error();
+3: if (p -> is_parrent) do_stuff1();
+4: do_complex_stuff();    // 다른 branch가 있을 수도 있다.
+5: if (p -> is_child) do_stuff2();
+6: if (p -> is_parent && p -> has_sibling) do_stuff3();
+7: if (p != NULL) delete p;
+```
+
+- 2번 branch는 7번 branch와 매우 연관이 깊다.(2번이 false이면 7번은 true이다.)
+
+- 3, 5, 6번 branch도 서로 연관이 있다.
+
+이렇게 branch가 서로 가지고 있는 관계를 가지고 branch prediction을 시도할 수 있다. 지금까지 관찰한 branch A, B, C,..., J의 결과가 이러했으니, 지금 실행되는 branch K의 결과를 이를 바탕으로 predict하는 것이다.
+
+하지만 모든 branch 결과를 기억할 수는 없으므로, 보통 가장 최근의 N개 branch의 결과만을 기억한다. 예를 들어, 가장 최근 8개 branch 결과만 기억한다고 하자. 이를 기록하는 장치를 **BHR**(Branch History Register)라고 부른다. 다음은 8bit BHR가 작동하는 예시다.
+
+1. BHR의 최상위 bit에 가장 오래된 branch 결과가, 최하위 bit에 가장 최근의 결과가 기록된다.
+
+    - 초기 값은 '0 0 0 0 0 0 0 0'이다.(좌측이 가장 오래된 결과, 우측이 가장 최근의 결과이다.)
+
+2. 만약 처음 실행된 branch 결과가 taken이라면, BHR은 왼쪽으로 한 칸 shift하고(즉, 맨 왼쪽 bit를 버리고) 새로운 값을 더한다.
+
+    - '0 0 0 0 0 0 0 1'이 된다.
+
+3. 다음 branch가 not taken, 그 다음은 taken이라면 결과는 '0 0 0 0 0 1 0 1'이 된다.
+
+이처럼 BHR은 <U>모든 branch 결과를 bit vector로 표현</U>한 것이다. 그렇다면 이 정보를 어떻게 branch prediction에 사용할까? 예를 들어 BHR size가 2bit라고 하자. 가능한 bit vector의 경우의 수는 4개가 된다. BHR 조합에 대응되는 4개의 branch prediction table이 있다고 하자.
+
+- 우선 branch prediction을 할 때, branch의 PC address와 현재의 BHR을 얻는다.
+
+- BHR 값에 따라 4개 table 중 하나를 고른다.
+
+- 그 다음부터는 2bit counter based branch prediction과 동일하게 작동한다. 
+
+이처럼 먼저 BHR을 이용하여 table을 고른 뒤, 그 뒤에 PC를 이용해서 branch prediction을 수행하므로 **Two-level branch predictor**라고 부른다. 
+
+BHR과 PC를 이용한 branch prediction은 다양한 방식으로 수행이 가능하다. 다음 그림은 두 가지 예시를 나타내고 있다.
+
+![Two-level branch predictor](images/two-level_branch_predictor.png)
+
+- 왼쪽은 BHR로 먼저 table을 찾고 PC를 활용한다.
+
+  - 이 방법은 BHR이 global로 한 개만 존재한다.
+
+- 오른쪽은 branch 결과를 global로 하지 않고, 각 branch에 국한하는 방식이다.
+
+  - PC마다 따로 local BHR를 관리하는 table을 둔다.
+
+  > local BHR table 크기도 한정적이기 때문에, 모든 PC마다 만들 수는 없고 겹치는 일이 발생하게 된다.
+
+하지만 이런 방식은 특정 BHR table과 PC 조합이 잘 안 쓰인다면 많은 table 공간이 낭비되게 된다. 따라서 다음과 같이 PC와 BHR을 합쳐서 쓰는 **gShare branch predictor**이 등장했다.
+
+![gShare branch predictor](images/gShare_branch_predictor.png)
+
+gShare branch predictor에서는 PC와 BHR을 서로 XOR한 뒤, 얻은 값을 이용해서 table에서 entry를 하나 고른다. 비슷한 공간이라면 더 높은 성능을 보여준다. 다음은 이를 구현한 code이다.
+
+```cpp
+class GShareBranchPredictor : public BranchPredictor
+{
+private:
+    char*   table_;     // 00:StrongNT, 01:WeakNT, 10:WeakT, 11:StrongT
+    size_t  size_;      // branch predictor의 size
+    uint8_t history_;  //
+    
+public:
+    virtual void Initialize(size_t predictor_entry_size) {
+        table_ = new char[(size_ = predictor_entry_size)];
+        // branch의 모든 결과를 weakly not taken으로 설정한다.
+        memset(table_, 1, sizeof(char)*size_);
+        history_ = 0;
+    }
+    virtual bool DoPrediction(uint64_t branch_pc) {
+        // 주어진 branch의 PC address와 history를 XOR 연산으로 섞는다.
+        return (table_[(branch_pc ^ history_) % size_] >= 2);
+    }
+    virtual void UpdatePredictor(uint64_t branch_pc, bool taken) {
+        int index = (branch_pc ^ history_) % size_;
+        // branch의 실제 결과를 반영한다.
+        table_[index] += (taken ? 1 : -1);
+        if (table_[index] > 3) {
+            table_[index] = 3;
+        }
+        if (table_[index] < 0) {
+            table_[index] = 0;
+        }
+        // history를 update한다.
+        history_ = (history_ << 1) | taken;
+    }
+};
+```
+
+우수한 성능을 보이는 branch predictor도 어느 상황에서나 그런 것은 아니다. 특정 branch에서는 다른 종류의 predictor가 나을 때도 있다. 따라서 특정 분기문에 따라 더 능동적으로 branch prediction algorithm을 선택할 수 있다. 이를 tournament branch predictor 또는 meta predictor라고 부른다.
+
+---
+
+## 13.6 predication
+
+가령 다음과 같은 예시에서는 어떤 branch predication을 동원해도 예측이 힘들 것이다.
+
+```c
+if (rand() % 2) {
+    a = 10;
+} else {
+    a = 20;
+}
+```
+
+위 예제는 50%의 확률로 taken하거나, not-taken한다. 이럴 때는 hardware에서 수행하는 branch prediction이 거의 무용지물이 된다. 그러나 program는 이러한 짧은 크기의 if-else 구문이 굉장히 많다. 이는 compiler가 optimization을 수행할 때도 장애가 된다.
+
+이런 문제를 해결할 수 있는 방법 중 하나로 **predication**이라는 branch 처리 기법이 있다. 이 방법은 control dependence를 data dependence로 바꾸는 방법으로 branch를 변환한다.
+
+```c
+1: predicate = (rand() % 2);
+2: a = 10 (predicate);     // predicate가 true일 때만 실행
+3: a = 20 (!predicate);    // !predicate가 true일 때만 실행
+```
+
+- line 1의 branch 결과를 predicate register에 저장한다.
+
+- line 2, 3은 predication 명령이다. register가 true일 때만 실제로 반영된다.
+
+predication을 지원하려면 predicate register가 필요하고, instruction이 predication register를 쓸 수 있게 확장해야 한다. predication 명령은 predicate register가 true일 때만 commit하고, 그렇지 않을 때는 해당 instruction을 invalid하게 바꾼다. 
+
+이처럼 control dependence가 data dependence로 바뀐다. 하지만 hardware를 대폭적으로 수정해야 하므로, 특별한 instruction set을 제외하고는 제한적으로 지원된다. branch prediction이 아주 힘든 짧은 branch에서 CMOV가 특히 효과적이다.
+
+> x86은 CMOV(conditional move)라는 instruction으로 predication을 지원한다. 특정 register가 켜저 있으면 값을 write하게 하는 instruction이다.
+
+> CMOV로 optimization을 하고 싶다면 반드시 benchmarking을 제대로 수행한 뒤 사용해야 한다.
+
+---

@@ -75,6 +75,16 @@
 
    > Temporal Multi-Threading(fine-grained/coarse-grained threading), Simultaneous Multi-Threading(SMT)
 
+### 📈 improvement
+
+ - [branch predictor](https://github.com/erectbranch/Multicore_Basic/tree/master/ch13)
+
+   > conditional/unconditional branch, direct/indirect branch, branch prediction/branch target prediction
+
+   > speculative execution, checkpoint, taken/not-taken branch, static/dynamic branch prediction
+
+   > last time/two bit counter based branch prediction, BHR(Branch History Register), gShare branch prediction, predication
+
 <br/>
 
 ## :mag: 목차
