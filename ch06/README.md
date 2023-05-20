@@ -195,7 +195,7 @@ ID는 이런 flow를 **parsing**(파싱. 어떤 문장을 분석하거나 문법
 
 그런데 이 instruction이 받는 argument는 variable A가 있는 address, 즉 address type이다. 이런 상황이라면 memory를 읽어오는 작업을 한 cycle이 아닌 여러 cycle로 구현하는 것이 더 효율적이다.
 
-> 한 cycle로 구성하게 되면, memory를 취하지 않고 간단한 register를 상대로 게산하는 ALU instruction들은 시간을 낭비하게 된다. 결국 이로 인해 성능이 저하된다.
+> 한 cycle로 구성하게 되면, memory를 취하지 않고 간단한 register를 상대로 계산하는 ALU instruction들은 시간을 낭비하게 된다. 결국 이로 인해 성능이 저하된다.
 
 이것이 복잡한 CISC instruction을 RISC 형식으로 나누는 이유다. 작업들을 나눠서 간단한 instruction은 빠르게 완료시키는 방식으로 latency와 throughput을 향상시키는 것이다.
 
@@ -227,7 +227,7 @@ instruction decoding까지 마쳤으므로, 이제 operand를 읽어야 한다. 
 
 3. st [sp + 4], r1
 
-   - memory address 게산과 register를 읽는다.
+   - memory address 계산과 register를 읽는다.
 
 4. jz r1, 100
 
@@ -269,7 +269,7 @@ operand를 읽는 과정은 이와 같았다. memory store와 branch일 때는 �
 
 ## 6.4 Instruction Execution
 
-지금까지 instruction fetch, decoding, operands fetch 단계까지 완료되었다. 이제 지시에 따라 실제 게산을 Instruction Execution 단계(**EX** 또는 **EXE**)에서 수행한다. 
+지금까지 instruction fetch, decoding, operands fetch 단계까지 완료되었다. 이제 지시에 따라 실제 계산을 Instruction Execution 단계(**EX** 또는 **EXE**)에서 수행한다. 
 
 계산은 instruction 종류에 따라 다소 차이가 있는데, 앞서 본 add r1, r0, 10와 같은 경우, 지정한 연산 타입에 따라 계산만 수행하면 된다.
 
