@@ -179,7 +179,7 @@ instruction fetch를 통해 byte queue에 저장된 instruction은 앞서 본 '0
 
 > 구체적으로 opcode, operand, destination address, addressing mode, 또는 간단한 branch라면 branch target address도 읽는다.
 
-ID는 이런 flow를 **pasing**(파싱. 어떤 문장을 분석하거나 문법적 관계를 해석하는 과정)하는 과정이라고 할 수 있다.
+ID는 이런 flow를 **parsing**(파싱. 어떤 문장을 분석하거나 문법적 관계를 해석하는 과정)하는 과정이라고 할 수 있다.
 
 이때 RISC라면 instruction 길이가 일정하고 opcode 위치도 정해져 있기 때문에 decoding이 편리하다. 예를 들어 MIPS에서는 최상위 6bit에 opcode가 저장되므로 instruction이 덧셈인지 분기문인지 한 번에 알 수 있다.
 
